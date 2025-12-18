@@ -303,4 +303,94 @@ class SystemCleaner {
             
             console.log(`📄 تم حفظ تقرير التنظيف: ${reportFile}`);
             
-        } catch (error)
+        } catch (error) {
+            console.error('❌ خطأ في إنشاء تقرير التنظيف:', error);
+        }
+    }
+    
+    async analyzeDiskUsage() {
+        try {
+            const directories = ['./data', './exports', './logs', './backups'];
+            const usage = {};
+            
+            for (const dir of directories) {
+                try {
+                    usage[dir] = await this.getDirectorySize(dir);
+                } catch {
+                    usage[dir] = 'غير متوفر';
+                }
+            }
+            
+            console.log('\n💾 تحليل استخدام المساحة:');
+            console.log('='.repeat(50));
+            
+            for (const [dir, size] of Object.entries(usage)) {
+                console.log(`${dir}: ${size}`);
+            }
+            
+            return usage;
+            
+        } catch (error) {
+            console.error('❌ خطأ في تحليل المساحة:', error);
+            return {};
+        }
+    }
+    
+    async getDirectorySize(dir) {
+        try {
+            const files = await fs.readdir(dir);
+            let totalSize = 0;
+            
+            for (const file of files) {
+                const filePath = path.join(dir, file);
+                const stat = await fs.stat(filePath);
+                
+                if (stat.isDirectory()) {
+                    totalSize += await this.getDirectorySize(filePath);
+                } else {
+                    totalSize += stat.size;
+                }
+            }
+            
+            const sizeMB = (totalSize / (1024 * 1024)).toFixed(2);
+            return `${sizeMB} MB`;
+            
+        } catch {
+            return '0 MB';
+        }
+    }
+}
+
+// استخدام المنظف مباشرة
+if (require.main === module) {
+    const cleaner = new SystemCleaner();
+    
+    async function main() {
+        const command = process.argv[2];
+        
+        switch (command) {
+            case 'clean':
+                await cleaner.cleanupSystem();
+                break;
+                
+            case 'analyze':
+                await cleaner.analyzeDiskUsage();
+                break;
+                
+            case 'config':
+                console.log('⚙️ إعدادات التنظيف:');
+                console.log(JSON.stringify(cleaner.config, null, 2));
+                break;
+                
+            default:
+                console.log('🧹 أوامر تنظيف النظام:');
+                console.log('npm run clean        - تنظيف النظام كاملاً');
+                console.log('npm run clean analyze - تحليل استخدام المساحة');
+                console.log('npm run clean config  - عرض إعدادات التنظيف');
+        }
+    }
+    
+    main().catch(console.error);
+}
+
+module.exports = SystemCleaner;
