@@ -1,11 +1,11 @@
 /**
- * WhatsApp Account Class (FINAL – QR via Telegram)
+ * WhatsApp Account – FINAL STABLE VERSION
+ * حل نهائي لمشكلة إغلاق الاتصال قبل الربط
  */
 
 const path = require('path');
 const fs = require('fs-extra');
-const QRCode = require('qrcode');
-const TelegramBot = require('node-telegram-bot-api');
+const Pino = require('pino');
 
 const {
   default: makeWASocket,
@@ -13,23 +13,16 @@ const {
   DisconnectReason
 } = require('@whiskeysockets/baileys');
 
-const Pino = require('pino');
 const logger = require('../../utils/logger');
-
 const { registerWhatsAppEvents } = require('../events');
 const { processGroupQueue } = require('../joiner');
-
-// Telegram bot (لا polling)
-const tgBot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, {
-  polling: false
-});
 
 class WhatsAppAccount {
   constructor({ id }) {
     this.id = id;
     this.sock = null;
     this.connected = false;
-    this.isLinking = true; // ⛔ مهم جدًا لمنع loop
+    this.isLinking = true; // ⛔ يمنع reconnect أثناء الربط
 
     this.sessionPath = path.join(
       __dirname,
@@ -79,6 +72,9 @@ class WhatsAppAccount {
     }
   }
 
+  // =========================
+  // الاتصال (الحل النهائي هنا)
+  // =========================
   async connect() {
     logger.info(`🔗 بدء ربط حساب واتساب: ${this.id}`);
 
@@ -89,48 +85,31 @@ class WhatsAppAccount {
     this.sock = makeWASocket({
       auth: state,
       logger: Pino({ level: 'silent' }),
-      generateHighQualityLinkPreview: true
+
+      // ✅ إعدادات حاسمة لمنع الإغلاق المبكر
+      browser: ['WhatsApp Companion', 'Chrome', '120.0'],
+      keepAliveIntervalMs: 30000,
+      connectTimeoutMs: 60000,
+      qrTimeout: 60000,
+
+      // لا نطبع QR ولا نعيد الاتصال تلقائيًا
+      emitOwnEvents: true,
+      shouldIgnoreJid: () => false
     });
 
     this.sock.ev.on('creds.update', saveCreds);
 
-    this.sock.ev.on('connection.update', async (update) => {
+    this.sock.ev.on('connection.update', (update) => {
       const { connection, lastDisconnect, qr } = update;
 
-      // =========================
-      // إرسال QR إلى تيليجرام (نهائي)
-      // =========================
+      // ===== QR تم إنشاؤه =====
       if (qr) {
-        try {
-          const adminId = process.env.ADMIN_TELEGRAM_ID;
-          if (!adminId) {
-            logger.error('❌ ADMIN_TELEGRAM_ID غير موجود في .env');
-            return;
-          }
-
-          const qrImage = await QRCode.toBuffer(qr);
-
-          await tgBot.sendPhoto(
-            adminId,
-            qrImage,
-            {
-              caption:
-                '📲 امسح رمز QR لربط حساب واتساب\n\n' +
-                'واتساب → الأجهزة المرتبطة → ربط جهاز\n\n' +
-                '⏱️ الرمز صالح لفترة قصيرة'
-            }
-          );
-
-          logger.info(`📸 تم إرسال QR إلى تيليجرام للحساب ${this.id}`);
-        } catch (err) {
-          logger.error('❌ فشل إرسال QR إلى تيليجرام', err);
-        }
+        logger.info('📲 تم إنشاء QR – بانتظار المسح (حتى 60 ثانية)');
+        // لا نغلق الاتصال ولا نعيد المحاولة
         return;
       }
 
-      // =========================
-      // تم الربط بنجاح
-      // =========================
+      // ===== تم الربط بنجاح =====
       if (connection === 'open') {
         this.connected = true;
         this.isLinking = false;
@@ -142,15 +121,13 @@ class WhatsAppAccount {
         return;
       }
 
-      // =========================
-      // إغلاق الاتصال
-      // =========================
+      // ===== تم إغلاق الاتصال =====
       if (connection === 'close') {
         this.connected = false;
 
-        // ⛔ لا تعيد الاتصال أثناء الربط
+        // ⛔ أثناء الربط: لا نعيد الاتصال
         if (this.isLinking) {
-          logger.warn('❌ تم إغلاق الاتصال قبل مسح QR');
+          logger.warn('⏳ انتهت مهلة الربط بدون مسح QR');
           return;
         }
 
@@ -162,7 +139,7 @@ class WhatsAppAccount {
           return;
         }
 
-        logger.warn('⚠️ انقطع الاتصال – إعادة المحاولة');
+        logger.warn('🔁 انقطع الاتصال – إعادة المحاولة');
         this.reconnect();
       }
     });
