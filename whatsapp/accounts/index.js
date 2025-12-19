@@ -1,101 +1,125 @@
 /**
  * WhatsApp Accounts Manager
- * مسؤول عن إنشاء وإدارة عدة حسابات واتساب
+ * مسؤول عن:
+ * - إنشاء الحسابات
+ * - حفظها في الذاكرة
+ * - استعادتها عند تشغيل البوت
  */
 
+const fs = require('fs');
+const path = require('path');
 const WhatsAppAccount = require('./account');
-const {
-  loadAccounts,
-  addAccount,
-  saveAccounts
-} = require('./registry');
-
 const logger = require('../../utils/logger');
 
-// الحسابات النشطة في الذاكرة
-const activeAccounts = {};
+const ACCOUNTS_FILE = path.join(
+  __dirname,
+  '../../storage/accounts/accounts.json'
+);
+
+// Map للحسابات النشطة
+const accounts = new Map();
 
 /**
- * إنشاء وربط حساب واتساب جديد
- * @param {string} accountId
+ * التأكد من وجود ملف الحسابات
  */
-async function createAccount(accountId) {
-  if (activeAccounts[accountId]) {
-    logger.warn(`⚠️ الحساب ${accountId} موجود بالفعل`);
-    return activeAccounts[accountId];
+function ensureAccountsFile() {
+  const dir = path.dirname(ACCOUNTS_FILE);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
   }
 
-  const account = new WhatsAppAccount({ id: accountId });
-
-  try {
-    await account.connect();
-    activeAccounts[accountId] = account;
-
-    // حفظ الحساب في السجل إذا لم يكن موجودًا
-    const data = loadAccounts();
-    const exists = data.accounts.find(a => a.id === accountId);
-
-    if (!exists) {
-      addAccount({
-        id: accountId,
-        createdAt: new Date().toISOString()
-      });
-    }
-
-    logger.info(`✅ تم ربط حساب واتساب: ${accountId}`);
-    return account;
-
-  } catch (err) {
-    logger.error(`❌ فشل ربط الحساب: ${accountId}`, err);
-    throw err;
+  if (!fs.existsSync(ACCOUNTS_FILE)) {
+    fs.writeFileSync(
+      ACCOUNTS_FILE,
+      JSON.stringify({ accounts: [] }, null, 2)
+    );
   }
 }
 
 /**
- * جلب حساب واتساب نشط
- * @param {string} accountId
+ * تحميل الحسابات المحفوظة (بدون اتصال)
  */
-function getAccount(accountId) {
-  return activeAccounts[accountId] || null;
-}
+function restoreLinkedAccounts() {
+  ensureAccountsFile();
 
-/**
- * قائمة الحسابات النشطة
- */
-function listAccounts() {
-  return Object.keys(activeAccounts);
-}
+  const data = JSON.parse(fs.readFileSync(ACCOUNTS_FILE));
+  const list = data.accounts || [];
 
-/**
- * تسجيل خروج حساب واتساب
- * @param {string} accountId
- */
-async function removeAccount(accountId) {
-  const account = activeAccounts[accountId];
-  if (!account) return false;
+  for (const acc of list) {
+    const account = new WhatsAppAccount({ id: acc.id });
+    accounts.set(acc.id, account);
 
-  try {
-    if (account.sock) {
-      await account.sock.logout();
-    }
-  } catch (err) {
-    logger.warn(`⚠️ خطأ أثناء تسجيل خروج الحساب ${accountId}`, err);
+    logger.info(`🔁 تم تحميل الحساب المحفوظ: ${acc.id}`);
+    // ⚠️ لا يتم الاتصال هنا
+    // الاتصال يتم فقط عند طلب المستخدم
   }
+}
 
-  delete activeAccounts[accountId];
+/**
+ * إنشاء حساب جديد (بدون اتصال)
+ */
+function createAccount() {
+  ensureAccountsFile();
 
-  // إزالة من السجل
-  const data = loadAccounts();
-  data.accounts = data.accounts.filter(a => a.id !== accountId);
-  saveAccounts(data);
+  const id = `acc_${Date.now()}`;
+  const account = new WhatsAppAccount({ id });
 
-  logger.info(`🚪 تم تسجيل خروج الحساب: ${accountId}`);
+  accounts.set(id, account);
+
+  // حفظه في الملف
+  const data = JSON.parse(fs.readFileSync(ACCOUNTS_FILE));
+  data.accounts.push({
+    id,
+    createdAt: new Date().toISOString()
+  });
+
+  fs.writeFileSync(
+    ACCOUNTS_FILE,
+    JSON.stringify(data, null, 2)
+  );
+
+  logger.info(`🆕 تم إنشاء حساب جديد: ${id}`);
+  return account;
+}
+
+/**
+ * حذف حساب
+ */
+function removeAccount(id) {
+  if (!accounts.has(id)) return false;
+
+  accounts.delete(id);
+
+  const data = JSON.parse(fs.readFileSync(ACCOUNTS_FILE));
+  data.accounts = data.accounts.filter(a => a.id !== id);
+
+  fs.writeFileSync(
+    ACCOUNTS_FILE,
+    JSON.stringify(data, null, 2)
+  );
+
+  logger.info(`🗑️ تم حذف الحساب: ${id}`);
   return true;
 }
 
+/**
+ * جلب حساب بالمعرف
+ */
+function getAccount(id) {
+  return accounts.get(id) || null;
+}
+
+/**
+ * جلب جميع الحسابات
+ */
+function getAllAccounts() {
+  return Array.from(accounts.values());
+}
+
 module.exports = {
+  restoreLinkedAccounts,
   createAccount,
+  removeAccount,
   getAccount,
-  listAccounts,
-  removeAccount
+  getAllAccounts
 };
