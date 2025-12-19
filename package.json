@@ -1,22 +1,26 @@
 {
-  "name": "whatsapp-companion-bot",
+  "name": "whatsapp-telegram-control-system",
   "version": "1.0.0",
-  "description": "Telegram controlled WhatsApp companion device bot",
-  "author": "8g6ghfrgj",
-  "license": "MIT",
-  "type": "module",
-  "main": "src/index.js",
+  "description": "Telegram bot to control multiple WhatsApp accounts via Linked Devices",
+  "main": "index.js",
+  "type": "commonjs",
   "scripts": {
-    "start": "node src/index.js"
+    "start": "node index.js",
+    "dev": "node index.js",
+    "pm2": "pm2 start index.js --name wt-system",
+    "lint": "echo \"No lint configured\""
+  },
+  "author": "Mohammed",
+  "license": "MIT",
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.7",
+    "dotenv": "^16.4.5",
+    "fs-extra": "^11.2.0",
+    "node-telegram-bot-api": "^0.66.0",
+    "pino": "^9.0.0",
+    "qrcode": "^1.5.4"
   },
   "engines": {
-    "node": ">=20.0.0"
-  },
-  "dependencies": {
-    "@whiskeysockets/baileys": "^6.7.8",
-    "node-telegram-bot-api": "^0.66.0",
-    "dotenv": "^16.4.5",
-    "qrcode": "^1.5.4",
-    "pino": "^8.21.0"
+    "node": ">=18.0.0"
   }
 }
