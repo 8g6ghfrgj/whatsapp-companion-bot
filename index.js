@@ -2,6 +2,7 @@
  * Entry Point
  * WhatsApp – Telegram Control System
  * Author: Mohammed
+ * Mode: Pairing Code (Phone Number)
  */
 
 require('dotenv').config();
@@ -10,12 +11,17 @@ const fs = require('fs');
 const path = require('path');
 
 const logger = require('./utils/logger');
-const { startTelegramBot } = require('./telegram/bot');
-const { loadAccounts } = require('./whatsapp/accounts/registry');
-const { createAccount } = require('./whatsapp/accounts');
+
+// تشغيل بوت تيليجرام
+require('./telegram/bot');
+
+// إدارة حسابات واتساب
+const {
+  restoreLinkedAccounts
+} = require('./whatsapp/accounts');
 
 /**
- * تأكد من وجود مجلدات التخزين الأساسية
+ * التأكد من وجود مجلدات التخزين الأساسية
  */
 function ensureBaseStorage() {
   const dirs = [
@@ -29,29 +35,7 @@ function ensureBaseStorage() {
     const fullPath = path.join(__dirname, dir);
     if (!fs.existsSync(fullPath)) {
       fs.mkdirSync(fullPath, { recursive: true });
-    }
-  }
-}
-
-/**
- * إعادة تشغيل الحسابات المرتبطة تلقائيًا عند بدء السيرفر
- */
-async function restoreLinkedAccounts() {
-  const data = loadAccounts();
-
-  if (!data.accounts || !data.accounts.length) {
-    logger.info('ℹ️ لا توجد حسابات واتساب محفوظة لإعادة تشغيلها');
-    return;
-  }
-
-  logger.info(`🔄 إعادة تشغيل ${data.accounts.length} حساب واتساب`);
-
-  for (const acc of data.accounts) {
-    try {
-      await createAccount(acc.id);
-      logger.info(`✅ تم إعادة تشغيل الحساب: ${acc.id}`);
-    } catch (err) {
-      logger.error(`❌ فشل تشغيل الحساب: ${acc.id}`, err);
+      logger.info(`📁 تم إنشاء المجلد: ${dir}`);
     }
   }
 }
@@ -62,17 +46,16 @@ async function restoreLinkedAccounts() {
 async function startApp() {
   try {
     logger.info('🚀 بدء تشغيل النظام...');
-    
+
+    // تأكد من بنية التخزين
     ensureBaseStorage();
 
-    // تشغيل بوت تيليجرام
-    await startTelegramBot();
-    logger.info('🤖 بوت تيليجرام يعمل بنجاح');
+    // تحميل الحسابات المحفوظة (بدون تشغيل اتصال)
+    restoreLinkedAccounts();
+    logger.info('📦 تم تحميل الحسابات المحفوظة (بدون اتصال)');
 
-    // إعادة تشغيل حسابات واتساب المرتبطة
-    await restoreLinkedAccounts();
-
-    logger.info('✅ النظام يعمل بكامل طاقته');
+    logger.info('🤖 بوت تيليجرام يعمل وجاهز للأوامر');
+    logger.info('✅ النظام يعمل بوضع Pairing Code');
   } catch (err) {
     logger.error('🔥 خطأ قاتل أثناء التشغيل', err);
     process.exit(1);
@@ -82,7 +65,9 @@ async function startApp() {
 // بدء التشغيل
 startApp();
 
-// حماية من أخطاء غير متوقعة
+/**
+ * حماية من الأخطاء غير المتوقعة
+ */
 process.on('unhandledRejection', (reason) => {
   logger.error('❌ Unhandled Promise Rejection', reason);
 });
