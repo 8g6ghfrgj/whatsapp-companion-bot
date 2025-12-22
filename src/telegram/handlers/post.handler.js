@@ -1,22 +1,27 @@
 import { bot } from '../bot.js';
-import { AdsRepo } from '../../database/repositories/ads.repo.js';
-import {
-  startPosting,
-  stopPosting
-} from '../../whatsapp/whatsapp.controller.js';
 
+/**
+ * بدء النشر التلقائي
+ * (معطّل مؤقتًا إلى أن يكتمل ربط منطق النشر مع جلسة واتساب الجديدة)
+ */
 export async function start(chatId) {
-  await startPosting();
-  bot.sendMessage(chatId, '🚀 بدأ النشر التلقائي');
+  try {
+    await bot.sendMessage(
+      chatId,
+      '⚠️ النشر التلقائي غير مفعل حاليًا.\n' +
+      'سيتم تفعيله بعد الانتهاء من ربط الجلسة النهائية بشكل كامل.'
+    );
+  } catch (_) {}
 }
 
+/**
+ * إيقاف النشر التلقائي
+ */
 export async function stop(chatId) {
-  stopPosting();
-  bot.sendMessage(chatId, '🛑 تم إيقاف النشر التلقائي');
-}
-
-// إضافة إعلان نصي (أساسي – قابل للتوسعة)
-export async function addTextAd(chatId, text) {
-  await AdsRepo.create('text', text);
-  bot.sendMessage(chatId, '✅ تم حفظ الإعلان النصي');
+  try {
+    await bot.sendMessage(
+      chatId,
+      '⛔ لا يوجد نشر تلقائي نشط حاليًا.'
+    );
+  } catch (_) {}
 }
