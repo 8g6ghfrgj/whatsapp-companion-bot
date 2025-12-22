@@ -12,7 +12,6 @@ let page = null;
 
 let loggedIn = false;
 let qrSent = false;
-
 let currentProfilePath = null;
 
 // ================================
@@ -55,7 +54,7 @@ async function launchBrowser(profilePath) {
 // ================================
 // Login Detection
 // ================================
-async function waitForLogin() {
+async function watchForLogin() {
   const interval = setInterval(async () => {
     try {
       const isLogged = await page.evaluate(() => {
@@ -68,7 +67,7 @@ async function waitForLogin() {
         loggedIn = true;
         qrSent = false;
         clearInterval(interval);
-        logger.info('WhatsApp linked successfully');
+        logger.info('WhatsApp device linked successfully');
       }
     } catch (_) {}
   }, 2000);
@@ -79,26 +78,26 @@ async function waitForLogin() {
 // ================================
 
 /**
- * بدء جلسة واتساب
+ * بدء جلسة واتساب وربط جهاز
  * @param {Function} onQR callback لإرسال QR
- * @param {Boolean} forceRestart هل نعيد تشغيل Chrome لإحضار QR جديد
+ * @param {Boolean} forceRestart إعادة تشغيل Chrome لجلب QR جديد
  */
 export async function startWhatsAppSession(onQR, forceRestart = false) {
   try {
-    // إذا الحساب مربوط فعليًا
+    // إذا تم الربط مسبقًا
     if (loggedIn) {
-      logger.info('WhatsApp already logged in');
+      logger.info('WhatsApp already linked');
       return;
     }
 
-    // إذا نحتاج QR جديد → نغلق كل شيء ونبدأ من جديد
+    // طلب QR جديد → إعادة تشغيل كاملة
     if (forceRestart) {
       logger.info('Forcing new WhatsApp session');
       await closeBrowser();
       qrSent = false;
     }
 
-    // إذا فيه QR أُرسل سابقًا ولم يُطلب إعادة
+    // إذا QR أُرسل ولم يُطلب إعادة
     if (qrSent && !forceRestart) {
       logger.info('QR already sent, waiting for scan');
       return;
@@ -110,28 +109,33 @@ export async function startWhatsAppSession(onQR, forceRestart = false) {
 
     await launchBrowser(currentProfilePath);
 
-    logger.info(`Opening WhatsApp Web`);
+    logger.info('Opening WhatsApp Web');
     await page.goto('https://web.whatsapp.com', {
       waitUntil: 'domcontentloaded',
     });
 
-    // ننتظر QR الرسمي الحقيقي
-    const qrElement = await page.waitForSelector(
-      'canvas, img[alt*="Scan"]',
+    // ================================
+    // انتظار QR الرسمي للأجهزة المرتبطة
+    // ================================
+    const qrWrapper = await page.waitForSelector(
+      '[data-testid="qrcode"]',
       { timeout: 60000 }
     );
 
-    // نلتقط QR مرة واحدة فقط
-    const qrBuffer = await qrElement.screenshot({ type: 'png' });
+    // مهم جدًا: ننتظر اكتمال توليد QR
+    await page.waitForTimeout(1500);
+
+    // التقاط QR الحقيقي المرتبط بالجلسة
+    const qrBuffer = await qrWrapper.screenshot({ type: 'png' });
+
     qrSent = true;
+    logger.info('Official WhatsApp linking QR captured');
 
-    logger.info('Valid WhatsApp QR captured');
-
-    // نرسله للمستخدم
+    // إرسال QR مرة واحدة فقط
     await onQR(qrBuffer);
 
-    // نبدأ مراقبة تسجيل الدخول
-    await waitForLogin();
+    // مراقبة نجاح الربط
+    await watchForLogin();
   } catch (err) {
     logger.error(`Failed to start WhatsApp session: ${err.message}`);
     await closeBrowser();
@@ -140,7 +144,7 @@ export async function startWhatsAppSession(onQR, forceRestart = false) {
 }
 
 /**
- * هل واتساب مربوط؟
+ * هل واتساب مربوط فعليًا؟
  */
 export async function isWhatsAppLoggedIn() {
   return loggedIn;
