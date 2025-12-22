@@ -30,17 +30,22 @@ bot.on('webhook_error', (err) => {
 });
 
 // =====================================
-// Security: Ignore Non-Admin Messages
+// Security (IMPORTANT FIX)
 // =====================================
+// نمنع فقط الأوامر النصية من غير الأدمن
+// ولا نلمس callback_query نهائيًا
 bot.on('message', (msg) => {
   if (!isAdmin(msg)) {
-    try {
-      bot.sendMessage(
-        msg.chat.id,
-        '❌ غير مصرح لك باستخدام هذا البوت'
-      );
-    } catch (_) {}
-    logger.warn(`Unauthorized access attempt from ${msg.from.id}`);
+    // نرد فقط لو رسالة نصية (أوامر)
+    if (msg.text && msg.text.startsWith('/')) {
+      try {
+        bot.sendMessage(
+          msg.chat.id,
+          '❌ غير مصرح لك باستخدام هذا البوت'
+        );
+      } catch (_) {}
+      logger.warn(`Unauthorized command from ${msg.from.id}`);
+    }
   }
 });
 
