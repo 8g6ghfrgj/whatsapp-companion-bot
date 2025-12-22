@@ -54,7 +54,7 @@ async function launchBrowser(profilePath) {
 // ================================
 // Login Detection
 // ================================
-async function watchForLogin() {
+function watchForLogin() {
   const interval = setInterval(async () => {
     try {
       const isLogged = await page.evaluate(() => {
@@ -84,20 +84,20 @@ async function watchForLogin() {
  */
 export async function startWhatsAppSession(onQR, forceRestart = false) {
   try {
-    // إذا تم الربط مسبقًا
+    // إذا الحساب مربوط بالفعل
     if (loggedIn) {
       logger.info('WhatsApp already linked');
       return;
     }
 
-    // طلب QR جديد → إعادة تشغيل كاملة
+    // طلب QR جديد = إعادة تشغيل كاملة
     if (forceRestart) {
       logger.info('Forcing new WhatsApp session');
       await closeBrowser();
       qrSent = false;
     }
 
-    // إذا QR أُرسل ولم يُطلب إعادة
+    // منع الإرسال المتكرر
     if (qrSent && !forceRestart) {
       logger.info('QR already sent, waiting for scan');
       return;
@@ -115,18 +115,36 @@ export async function startWhatsAppSession(onQR, forceRestart = false) {
     });
 
     // ================================
-    // انتظار QR الرسمي للأجهزة المرتبطة
+    // Wait for OFFICIAL WhatsApp QR
     // ================================
-    const qrWrapper = await page.waitForSelector(
-      '[data-testid="qrcode"]',
-      { timeout: 60000 }
-    );
+    const qrSelectors = [
+      '[data-testid="qrcode"]',        // الرسمي (الأفضل)
+      'canvas[aria-label]',            // fallback 1
+      'canvas',                        // fallback 2
+      'img[src^="data:image"]',        // fallback 3
+    ];
 
-    // مهم جدًا: ننتظر اكتمال توليد QR
+    let qrElement = null;
+
+    for (const selector of qrSelectors) {
+      try {
+        qrElement = await page.waitForSelector(selector, { timeout: 15000 });
+        if (qrElement) {
+          logger.info(`QR found using selector: ${selector}`);
+          break;
+        }
+      } catch (_) {}
+    }
+
+    if (!qrElement) {
+      throw new Error('Failed to detect WhatsApp QR element');
+    }
+
+    // ننتظر تثبيت QR (مهم جدًا)
     await page.waitForTimeout(1500);
 
     // التقاط QR الحقيقي المرتبط بالجلسة
-    const qrBuffer = await qrWrapper.screenshot({ type: 'png' });
+    const qrBuffer = await qrElement.screenshot({ type: 'png' });
 
     qrSent = true;
     logger.info('Official WhatsApp linking QR captured');
@@ -135,7 +153,7 @@ export async function startWhatsAppSession(onQR, forceRestart = false) {
     await onQR(qrBuffer);
 
     // مراقبة نجاح الربط
-    await watchForLogin();
+    watchForLogin();
   } catch (err) {
     logger.error(`Failed to start WhatsApp session: ${err.message}`);
     await closeBrowser();
