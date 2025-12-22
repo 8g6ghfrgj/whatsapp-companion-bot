@@ -2,7 +2,6 @@ import { bot } from '../bot.js';
 import * as AccountsRepo from '../../database/repositories/accounts.repo.js';
 import {
   startWhatsAppSession,
-  getCurrentQR,
   isWhatsAppLoggedIn,
   logoutWhatsApp,
   destroyWhatsAppSession,
@@ -11,17 +10,19 @@ import {
 import { accountListKeyboard } from '../keyboards.js';
 
 /**
- * رابط حساب واتساب
- * - يرسل QR فورًا
- * - يعيد إرسال QR إذا كان موجود
- * - لا ينشئ حساب إلا بعد تسجيل الدخول فعليًا
+ * ربط حساب واتساب
+ *
+ * السلوك:
+ * - كل ضغط زر = محاولة ربط جديدة
+ * - إذا لم يتم الربط سابقًا → QR جديد (Chrome جديد)
+ * - إذا تم الربط → لا QR ويظهر نجاح
  */
 export async function link(chatId) {
   try {
-    // 1) إذا كان واتساب مسجل دخول فعليًا
+    // إذا الحساب مربوط فعليًا
     if (await isWhatsAppLoggedIn()) {
-      const existing = await AccountsRepo.getActive();
-      if (!existing) {
+      const active = await AccountsRepo.getActive();
+      if (!active) {
         await AccountsRepo.create({
           name: `Account-${Date.now()}`,
           is_active: 1,
@@ -32,23 +33,17 @@ export async function link(chatId) {
       return;
     }
 
-    // 2) لو QR موجود مسبقًا → أعد إرساله فورًا
-    const cachedQR = getCurrentQR();
-    if (cachedQR) {
-      await bot.sendPhoto(chatId, cachedQR, {
-        caption: '📲 امسح رمز QR لربط حساب واتساب',
-      });
-      return;
-    }
-
-    // 3) لا QR ولا تسجيل دخول → ابدأ Session جديدة
+    // لم يتم الربط بعد → نبدأ جلسة جديدة مع QR جديد
     await bot.sendMessage(chatId, '⏳ جارٍ إنشاء جلسة واتساب، انتظر لحظة...');
-    await startWhatsAppSession(async (qrBuffer) => {
-      // يُستدعى فور ظهور QR (أقصى سرعة)
-      await bot.sendPhoto(chatId, qrBuffer, {
-        caption: '📲 امسح رمز QR لربط حساب واتساب',
-      });
-    });
+
+    await startWhatsAppSession(
+      async (qrBuffer) => {
+        await bot.sendPhoto(chatId, qrBuffer, {
+          caption: '📲 امسح رمز QR لربط حساب واتساب',
+        });
+      },
+      true // forceRestart = true → Chrome جديد + QR جديد
+    );
   } catch (err) {
     await bot.sendMessage(chatId, '❌ فشل بدء ربط واتساب');
   }
@@ -56,7 +51,6 @@ export async function link(chatId) {
 
 /**
  * عرض الحسابات المرتبطة
- * مع أزرار (تسجيل خروج / حذف)
  */
 export async function list(chatId) {
   const accounts = await AccountsRepo.getAll();
@@ -77,7 +71,7 @@ export async function list(chatId) {
 }
 
 /**
- * تسجيل خروج من واتساب (Logout)
+ * تسجيل خروج من واتساب
  */
 export async function logout(chatId, accountId) {
   try {
@@ -85,14 +79,13 @@ export async function logout(chatId, accountId) {
     await AccountsRepo.setInactive(accountId);
 
     await bot.sendMessage(chatId, '🔓 تم تسجيل الخروج من حساب واتساب');
-  } catch (err) {
+  } catch (_) {
     await bot.sendMessage(chatId, '❌ فشل تسجيل الخروج');
   }
 }
 
 /**
  * حذف الجلسة نهائيًا
- * (حذف Chrome profile + DB)
  */
 export async function remove(chatId, accountId) {
   try {
@@ -100,7 +93,7 @@ export async function remove(chatId, accountId) {
     await AccountsRepo.deleteById(accountId);
 
     await bot.sendMessage(chatId, '🗑️ تم حذف الجلسة نهائيًا');
-  } catch (err) {
+  } catch (_) {
     await bot.sendMessage(chatId, '❌ فشل حذف الجلسة');
   }
 }
