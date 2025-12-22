@@ -22,63 +22,100 @@ bot.onText(/\/start/, (msg) => {
 });
 
 // =====================================
-// Inline Button Router (FIXED)
+// Inline Button Router
 // =====================================
 bot.on('callback_query', async (query) => {
-  // ✅ الفحص الصحيح للأدمن
-  if (!query.from || query.from.id !== Number(process.env.TELEGRAM_ADMIN_ID)) {
-    return;
-  }
+  if (!query.from || !isAdmin({ from: query.from })) return;
 
   const chatId = query.message.chat.id;
   const action = query.data;
 
-  // نرد على Telegram فورًا
   try {
     await bot.answerCallbackQuery(query.id);
   } catch (_) {}
 
   try {
-    switch (action) {
-      // Accounts
-      case 'wa_link':
-        return accountHandler.link(chatId);
-
-      case 'wa_accounts':
-        return accountHandler.list(chatId);
-
-      // Links
-      case 'links_start':
-        return linkHandler.start(chatId);
-
-      case 'links_stop':
-        return linkHandler.stop(chatId);
-
-      case 'links_show':
-        return linkHandler.show(chatId);
-
-      case 'links_export':
-        return linkHandler.exportLinks(chatId);
-
-      // Posting
-      case 'post_start':
-        return postHandler.start(chatId);
-
-      case 'post_stop':
-        return postHandler.stop(chatId);
-
-      // Auto Reply
-      case 'reply_toggle':
-        return replyHandler.toggle(chatId);
-
-      // Groups
-      case 'group_join':
-        return groupHandler.join(chatId);
-
-      default:
-        return bot.sendMessage(chatId, '❓ أمر غير معروف');
+    // ===============================
+    // Accounts
+    // ===============================
+    if (action === 'wa_link') {
+      return accountHandler.link(chatId);
     }
+
+    if (action === 'wa_accounts') {
+      return accountHandler.list(chatId);
+    }
+
+    if (action.startsWith('account_logout:')) {
+      const accountId = Number(action.split(':')[1]);
+      return accountHandler.logout(chatId, accountId);
+    }
+
+    if (action.startsWith('account_delete:')) {
+      const accountId = Number(action.split(':')[1]);
+      return accountHandler.remove(chatId, accountId);
+    }
+
+    // ===============================
+    // Navigation
+    // ===============================
+    if (action === 'back_main') {
+      return bot.sendMessage(
+        chatId,
+        '🛠️ لوحة التحكم الرئيسية',
+        mainKeyboard
+      );
+    }
+
+    // ===============================
+    // Links
+    // ===============================
+    if (action === 'links_start') {
+      return linkHandler.start(chatId);
+    }
+
+    if (action === 'links_stop') {
+      return linkHandler.stop(chatId);
+    }
+
+    if (action === 'links_show') {
+      return linkHandler.show(chatId);
+    }
+
+    if (action === 'links_export') {
+      return linkHandler.exportLinks(chatId);
+    }
+
+    // ===============================
+    // Posting
+    // ===============================
+    if (action === 'post_start') {
+      return postHandler.start(chatId);
+    }
+
+    if (action === 'post_stop') {
+      return postHandler.stop(chatId);
+    }
+
+    // ===============================
+    // Auto Reply
+    // ===============================
+    if (action === 'reply_toggle') {
+      return replyHandler.toggle(chatId);
+    }
+
+    // ===============================
+    // Groups
+    // ===============================
+    if (action === 'group_join') {
+      return groupHandler.join(chatId);
+    }
+
+    // ===============================
+    // Unknown
+    // ===============================
+    return bot.sendMessage(chatId, '❓ أمر غير معروف');
   } catch (err) {
-    bot.sendMessage(chatId, '❌ حدث خطأ أثناء تنفيذ الأمر');
+    return bot.sendMessage(chatId, '❌ حدث خطأ أثناء تنفيذ الأمر');
   }
 });
